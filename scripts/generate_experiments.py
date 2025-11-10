@@ -5,7 +5,10 @@ from pathlib import Path
 from argparse import ArgumentParser
 import sys
 
-sys.path.append("..")
+# Change to project root directory
+os.chdir(Path(__file__).parent.parent)
+
+sys.path.append(".")
 from lib.mmap_generator import MMapGenerator, generate_channel_parameters
 from config.config import (
     UE_COUNT,

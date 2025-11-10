@@ -1,2 +1,9 @@
 generated_experiments/
 generated_malicious_experiments/
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.swp
+*.swo
