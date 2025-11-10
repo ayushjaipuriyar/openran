@@ -20,15 +20,15 @@ if ! [[ "$START_TR" =~ ^[0-9]+$ && "$START_EXP" =~ ^[0-9]+$ ]]; then
 fi
 
 # --- Configuration ---
-CSV_FILE="/home/g3043047j/dataset/ue_data.csv"
-GNB_CONF="/home/g3043047j/openran/my-srsproject-demo/multi-ue-setup/gnb_zmq.yaml"
-UE_CONF="/home/g3043047j/openran/my-srsproject-demo/multi-ue-setup/ue1_zmq.conf"
+CSV_FILE="dataset/ue_data.csv"
+GNB_CONF="config/gnb_zmq.yaml"
+UE_CONF="config/ue_zmq.conf"
 METRICS_IP="127.0.0.1"
 RIC_IP="127.0.0.1"
 AMF_IP="10.53.1.2"
 TOTAL_TRAINING_SETS=100
 TOTAL_EXPERIMENTS=1
-BASE_EXP_DIR="/home/g3043047j/dataset/generated_malicious_experiments"
+BASE_EXP_DIR="generated_malicious_experiments"
 BASE_IP="10.45.1.2"
 CURRENT_RUN=$((START_TR * TOTAL_EXPERIMENTS + START_EXP - 1))
 CURRENT_TR=$START_TR
@@ -132,18 +132,18 @@ check_docker_service_health() {
     local service_name=$1
     local timeout=${2:-$TIMEOUT_SERVICE_READY}
     local start_time=$(date +%s)
-    
+
     info "Checking health of Docker service: $service_name (timeout: ${timeout}s)"
-    
+
     while true; do
         local current_time=$(date +%s)
         local elapsed=$((current_time - start_time))
-        
+
         if (( elapsed >= timeout )); then
             error "Timeout waiting for $service_name to be healthy"
             return 1
         fi
-        
+
         local health_status
         case "$service_name" in
             "ric_submgr")
@@ -160,7 +160,7 @@ check_docker_service_health() {
                 fi
                 ;;
         esac
-        
+
         echo -n "."
         sleep $HEALTH_CHECK_INTERVAL
     done
@@ -170,12 +170,12 @@ check_port_availability() {
     local port=$1
     local max_attempts=5
     local attempt=1
-    
+
     while (( attempt <= max_attempts )); do
         if ! lsof -i :$port >/dev/null 2>&1; then
             return 0
         fi
-        
+
         warn "Port $port is in use (attempt $attempt/$max_attempts). Attempting to free it..."
         local pid=$(lsof -ti :$port 2>/dev/null || true)
         if [[ -n "$pid" ]]; then
@@ -183,10 +183,10 @@ check_port_availability() {
             sudo kill -9 "$pid" 2>/dev/null || true
             sleep 2
         fi
-        
+
         ((attempt++))
     done
-    
+
     error "Failed to free port $port after $max_attempts attempts"
     return 1
 }
@@ -196,13 +196,13 @@ cleanup() {
     local tr=${1:-$CURRENT_TR}
     local exp=${2:-$CURRENT_EXP}
     local exp_dir="${BASE_EXP_DIR}/tr${tr}/exp${exp}"
-    
+
     info "Starting comprehensive cleanup for Training Set: $tr, Experiment: $exp"
     step "--- 🧹 Enhanced Graceful Shutdown ---"
-    
+
     # Stop background processes with better error handling
     info "Stopping background processes..."
-    
+
     # Stop GNU Radio
     if [[ -n "${GNURADIO_PID:-}" && -e /proc/${GNURADIO_PID} ]]; then
         info "Stopping GNU Radio (PID: $GNURADIO_PID)"
@@ -213,7 +213,7 @@ cleanup() {
             kill -9 "$GNURADIO_PID" 2>/dev/null || true
         fi
     fi
-    
+
     # Stop iPerf processes
     for i in {1..3}; do
         local pid_file="/tmp/iperf_UE${i}.pid"
@@ -226,7 +226,7 @@ cleanup() {
             rm -f "$pid_file"
         fi
     done
-    
+
     # Stop metrics server
     if [[ -f /tmp/metrics_server.pid ]]; then
         local metrics_pid=$(cat /tmp/metrics_server.pid)
@@ -236,7 +236,7 @@ cleanup() {
         fi
         rm -f /tmp/metrics_server.pid
     fi
-    
+
     # Kill tmux sessions with retries
     info "Stopping tmux sessions..."
     local tmux_sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null || true)
@@ -249,27 +249,27 @@ cleanup() {
         done
     fi
     tmux kill-server 2>/dev/null || true
-    
+
     # Enhanced Docker cleanup with parallel execution and timeouts
     info "Stopping Docker services..."
     (
-        cd ~/openran/oran-sc-ric
+    cd oran-sc-ric
         timeout 30s sudo docker compose down -v --remove-orphans > /dev/null 2>&1 || {
             warn "RIC docker compose down timed out, force stopping containers"
             sudo docker stop $(sudo docker ps -q --filter "name=ric") 2>/dev/null || true
         }
     ) &
-    
+
     (
-        cd ~/openran/srsRAN_Project/docker
+        cd srsRAN_Project/docker
         timeout 30s sudo docker compose down -v --remove-orphans > /dev/null 2>&1 || {
             warn "srsRAN docker compose down timed out, force stopping containers"
             sudo docker stop $(sudo docker ps -q --filter "name=open5gs") 2>/dev/null || true
         }
     ) &
-    
+
     wait || true
-    
+
     # Clean up network namespaces with verification
     info "Cleaning up network namespaces..."
     for i in {1..3}; do
@@ -279,13 +279,13 @@ cleanup() {
             sudo ip netns delete "$ns" 2>/dev/null || warn "Failed to delete namespace $ns"
         fi
     done
-    
+
     # Enhanced process cleanup
     info "Cleaning up remaining processes..."
     sudo pkill -f "sudo gnb" 2>/dev/null || true
     sudo pkill -f "sudo srsue" 2>/dev/null || true
     sudo pkill -f "python.*scenario" 2>/dev/null || true
-    
+
     # ZMQ port cleanup with enhanced verification
     info "Cleaning up ZMQ ports..."
     for port in 2000 2001 2100 2101 2200 2201 2300 2301 55555; do
@@ -298,7 +298,7 @@ cleanup() {
             fi
         fi
     done
-    
+
     # Clean up temporary files with pattern matching
     info "Cleaning up temporary files..."
     sudo rm -f /tmp/ue* /tmp/cu_cp* /tmp/python_scenario.pid /tmp/iperf_*.pid /tmp/metrics_server.pid
@@ -308,7 +308,7 @@ cleanup() {
         info "Removing network route"
         sudo ip route del 10.45.0.0/16 via 10.53.1.2 2>/dev/null || true
     fi
-    
+
     success "Enhanced cleanup complete"
 }
 
@@ -323,10 +323,10 @@ retry_with_backoff() {
     local step_name=$3
     shift 3
     local command=("$@")
-    
+
     for attempt in $(seq 1 $max_attempts); do
         retry_info "Attempting $step_name (attempt $attempt/$max_attempts)"
-        
+
         if "${command[@]}"; then
             success "$step_name succeeded on attempt $attempt"
             return 0
@@ -351,18 +351,18 @@ check_and_free_zmq_ports() {
     info "Performing comprehensive ZMQ port check..."
     local ports=(2000 2001 2100 2101 2200 2201)
     local failed_ports=()
-    
+
     for port in "${ports[@]}"; do
         if ! check_port_availability "$port"; then
             failed_ports+=("$port")
         fi
     done
-    
+
     if (( ${#failed_ports[@]} > 0 )); then
         error "Failed to free ports: ${failed_ports[*]}"
         return 1
     fi
-    
+
     success "All ZMQ ports are available: ${ports[*]}"
     return 0
 }
@@ -374,13 +374,13 @@ wait_for_gnb_connection() {
     local timeout=${3:-$TIMEOUT_SERVICE_READY}
     local log_file="${log_dir}/${name}.log"
     local start_time=$(date +%s)
-    
+
     info "Waiting for $name to establish connections (timeout: ${timeout}s)"
-    
+
     while true; do
         local current_time=$(date +%s)
         local elapsed=$((current_time - start_time))
-        
+
         if (( elapsed >= timeout )); then
             error "Timeout waiting for $name connections"
             if [[ -f "$log_file" ]]; then
@@ -389,33 +389,33 @@ wait_for_gnb_connection() {
             fi
             return 1
         fi
-        
+
         if [[ ! -f "$log_file" ]]; then
             info "Waiting for log file to be created..."
             sleep 2
             continue
         fi
-        
+
         local n2_ready=false
         local e2_ready=false
-        
+
         if grep -q "N2: Connection to AMF on $AMF_IP:38412 was established" "$log_file"; then
             n2_ready=true
         fi
-        
+
         if grep -q "E2AP: E2 connection to Near-RT-RIC on $RIC_IP:36421 accepted" "$log_file"; then
             e2_ready=true
         fi
-        
+
         printf "\rConnection status -> N2: %s, E2: %s (elapsed: %ds)" \
                "$n2_ready" "$e2_ready" "$elapsed"
-        
+
         if [[ "$n2_ready" == true && "$e2_ready" == true ]]; then
             echo ""
             success "$name connected successfully"
             return 0
         fi
-        
+
         sleep 2
     done
 }
@@ -427,9 +427,9 @@ wait_for_ue_connection() {
     local ue_ns="ue${ue_id}"
     local log_file="${log_dir}/${ue_ns}_stdout.log"
     local start_time=$(date +%s)
-    
+
     info "Waiting for UE${ue_id} to connect (timeout: ${timeout}s)"
-    
+
     # Wait for log file creation
     local file_wait_timeout=30
     local file_wait_start=$(date +%s)
@@ -441,38 +441,38 @@ wait_for_ue_connection() {
         fi
         sleep 1
     done
-    
+
     while true; do
         local current_time=$(date +%s)
         local elapsed=$((current_time - start_time))
-        
+
         if (( elapsed >= timeout )); then
             error "Timeout waiting for UE${ue_id} to connect"
             error "Last 15 lines from ${log_file}:"
             tail -n 15 "$log_file" | sed 's/^/    /'
             return 1
         fi
-        
+
         local pdu_ready=false
         local rrc_ready=false
-        
+
         if grep -q "PDU Session Establishment successful. IP:" "$log_file"; then
             pdu_ready=true
         fi
-        
+
         if grep -q "RRC NR reconfiguration successful" "$log_file"; then
             rrc_ready=true
         fi
-        
+
         printf "\rUE${ue_id} Status -> PDU: %s, RRC: %s (elapsed: %ds)" \
                "$pdu_ready" "$rrc_ready" "$elapsed"
-        
+
         if [[ "$pdu_ready" == true && "$rrc_ready" == true ]]; then
             echo ""
             success "UE${ue_id} connected successfully"
             return 0
         fi
-        
+
         sleep 2
     done
 }
@@ -486,24 +486,24 @@ start_gnb() {
     local log_dir=$5
     local tx_port=$(((id + 1) * 1000))
     local rx_port=$(((id + 1) * 1000 + 1))
-    
+
     info "Starting gNB: $name (ID: $id, IP: $bind_ip, Metrics: $metrics_port)"
-    
+
     # Check metrics port availability
     if ! check_port_availability "$metrics_port"; then
         error "Cannot start gNB - metrics port $metrics_port unavailable"
         return 1
     fi
-    
+
     # Start metrics server with better error handling
     info "Starting metrics server on port $metrics_port"
-    python3 /home/g3043047j/metrics_server.py \
+    python3 lib/metrics_server.py \
         -f "${log_dir}/${name}_metrics.jsonl" \
         -p "$metrics_port" > /dev/null 2>&1 &
-    
+
     local metrics_server_pid=$!
     echo $metrics_server_pid > /tmp/metrics_server.pid
-    
+
     # Wait for metrics server to be ready
     local wait_count=0
     while ! lsof -i :"$metrics_port" | grep -q python3; do
@@ -515,9 +515,9 @@ start_gnb() {
         sleep 1
         ((wait_count++))
     done
-    
+
     success "Metrics server ready on port $metrics_port"
-    
+
     # Check bind IP availability
     if ss -tuln | grep -q "$bind_ip"; then
         warn "Bind IP $bind_ip is in use, attempting to free it"
@@ -530,14 +530,14 @@ start_gnb() {
         done
         sleep 2
     fi
-    
+
     # Kill existing tmux session
     if tmux has-session -t "gnb_${name}" 2>/dev/null; then
         warn "Existing gNB session found, terminating it"
         tmux kill-session -t "gnb_${name}" 2>/dev/null || true
         sleep 2
     fi
-    
+
     # Start gNB in tmux session
     tmux new-session -d -s "gnb_${name}" "sudo gnb -c $GNB_CONF \
         --ran_node_name $name \
@@ -583,16 +583,16 @@ start_gnb() {
         --addr ${METRICS_IP} \
         --port ${metrics_port} \
         < /dev/null > ${log_dir}/${name}_stdout.log 2>&1"
-    
+
     success "gNB $name started successfully"
     sleep 5
-    
+
     # Wait for gNB connections with retry
     if ! wait_for_gnb_connection "$name" "$log_dir" 180; then
         error "gNB $name failed to establish connections"
         return 1
     fi
-    
+
     return 0
 }
 
@@ -605,25 +605,25 @@ start_ue() {
     local offset=$((((i - 1) % 3) * 100))
     local tx_port=$((2101 + group * 1000 + offset))
     local rx_port=$((2100 + group * 1000 + offset))
-    
+
     # Read UE configuration from CSV
     local line=$(awk -F',' 'BEGIN{c=0} !/^#/ && NF{c++; if(c=='"$i"') print $0}' "$CSV_FILE")
     if [[ -z "$line" ]]; then
         error "No UE entry found at index $i in $CSV_FILE"
         return 1
     fi
-    
+
     IFS=',' read -r name imsi key imei <<< "$line"
     info "Starting UE $i: $name (IMSI: $imsi, IMEI: $imei)"
     info "Network: $ue_ns, IP: $ue_ip, TX: $tx_port, RX: $rx_port"
-    
+
     # Kill existing session
     if tmux has-session -t "ue$i" 2>/dev/null; then
         warn "Existing UE$i session found, terminating it"
         tmux kill-session -t "ue$i" 2>/dev/null || true
         sleep 2
     fi
-    
+
     # Start UE in tmux session
     tmux new-session -d -s "ue$i" "sudo srsue ${UE_CONF} \
         --gw.netns $ue_ns \
@@ -642,7 +642,7 @@ start_ue() {
         --general.tracing_enable 1 \
         --general.tracing_filename ${log_dir}/${ue_ns}_tracing.log \
         --stack.have_tti_time_stats 1 > ${log_dir}/${ue_ns}_stdout.log 2>&1"
-    
+
     success "UE $i started in namespace $ue_ns"
     return 0
 }
@@ -653,39 +653,39 @@ start_and_wait_for_iperf() {
     local max_ues="$2"
     local exp_dir="$3"
     local all_started=true
-    
+
     if [[ ! -f "$conditions_file" ]]; then
         error "Conditions file not found: $conditions_file"
         return 1
     fi
-    
+
     info "Starting iPerf traffic generation for up to $max_ues UEs"
-    
+
     local counter=0
     local iperf_pids=()
-    
+
     while IFS=',' read -r ue iperf_path; do
         [[ "$ue" == "UE" ]] && continue
-        
+
         ((counter++))
         if (( counter > max_ues )); then break; fi
-        
+
         local ns_name=$(echo "$ue" | tr '[:upper:]' '[:lower:]')
         local pid_file="/tmp/iperf_${ue}.pid"
         local port=$((5200 + counter))
-        
+
         if [[ ! -f "$iperf_path" ]]; then
             warn "iPerf script not found: $iperf_path for $ue. Skipping..."
             continue
         fi
-        
+
         info "Starting iPerf for $ue in namespace $ns_name (port: $port)"
-        
+
         # Enhanced iPerf execution with better error handling
         sudo ip netns exec "$ns_name" bash -c "'$iperf_path' '$port'" \
            > "${exp_dir}/${ue}_iperf.log" 2>&1 &
         local last_pid=$!
-        
+
         # Check if the process started successfully
         if kill -0 "$last_pid" 2>/dev/null; then
             echo "$last_pid" > "$pid_file"
@@ -695,7 +695,7 @@ start_and_wait_for_iperf() {
             all_started=false
             error "Failed to start iPerf for $ue"
         fi
-        
+
     done < "$conditions_file"
     if [[ "$all_started" == "false" ]]; then
         error "One or more iPerf processes failed to start. Aborting."
@@ -709,7 +709,7 @@ start_and_wait_for_iperf() {
     else
         warn "No iPerf processes were started"
     fi
-    
+
     return 0
 }
 
@@ -718,23 +718,23 @@ check_metrics_503_error() {
     local metrics_log_file="$1"
     local timeout=${2:-$METRICS_503_CHECK_TIMEOUT}
     local start_time=$(date +%s)
-    
+
     info "Monitoring metrics for 503 errors (timeout: ${timeout}s)"
-    
+
     while true; do
         local elapsed=$(( $(date +%s) - start_time ))
         if (( elapsed >= timeout )); then
             break
         fi
-        
+
         if [[ -f "$metrics_log_file" ]] && grep -q "503" "$metrics_log_file"; then
             error "Detected 503 error in metrics output"
             return 1
         fi
-        
+
         sleep 2
     done
-    
+
     success "No 503 errors detected in metrics"
     return 0
 }
@@ -745,54 +745,54 @@ validate_experiment_completion() {
     local tr_num="$2"
     local exp_num="$3"
     local metrics_csv="${exp_dir}/metrics/kpm_style5_metrics.csv"
-    
+
     info "Validating experiment completion for tr${tr_num}/exp${exp_num}"
-    
+
     if [[ ! -f "$metrics_csv" ]]; then
         warn "Metrics CSV not found: $metrics_csv"
         return 1
     fi
-    
+
     # Check if CSV has data
     local line_count=$(wc -l < "$metrics_csv")
     if (( line_count <= 1 )); then
         warn "Metrics CSV appears empty (only header)"
         return 1
     fi
-    
+
     # Validate duration
     local header=$(head -n 1 "$metrics_csv")
     IFS=',' read -ra columns <<< "$header"
     local ts_index=-1
-    
+
     for i in "${!columns[@]}"; do
         if [[ "${columns[$i]}" == "Timestamp" ]]; then
             ts_index=$i
             break
         fi
     done
-    
+
     if [[ $ts_index -eq -1 ]]; then
         warn "Timestamp column not found in metrics CSV"
         return 1
     fi
-    
+
     # Extract and validate timestamps
     local timestamps=()
     while IFS= read -r line; do
         local ts=$(echo "$line" | cut -d',' -f$((ts_index+1)))
         timestamps+=("$ts")
     done < <(tail -n +2 "$metrics_csv")
-    
+
     if (( ${#timestamps[@]} == 0 )); then
         warn "No timestamp data found in metrics CSV"
         return 1
     fi
-    
+
     # Convert timestamps to epoch and calculate duration
     local epoch_times=()
     local parse_error=0
-    
+
     for ts in "${timestamps[@]}"; do
         local epoch=$(date -d "$ts" +"%s" 2>/dev/null)
         if [[ -z "$epoch" ]]; then
@@ -801,23 +801,23 @@ validate_experiment_completion() {
         fi
         epoch_times+=("$epoch")
     done
-    
+
     if (( parse_error )); then
         warn "Failed to parse some timestamps in metrics CSV"
         return 1
     fi
-    
+
     local min_epoch=${epoch_times[0]}
     local max_epoch=${epoch_times[0]}
-    
+
     for e in "${epoch_times[@]}"; do
         (( e < min_epoch )) && min_epoch=$e
         (( e > max_epoch )) && max_epoch=$e
     done
-    
+
     local duration=$((max_epoch - min_epoch))
     info "Experiment duration: ${duration}s (expected: ${EXPECTED_DURATION_SEC}s)"
-    
+
     if (( duration >= EXPECTED_DURATION_SEC - 10 && duration <= EXPECTED_DURATION_SEC + 10 )); then
         success "Experiment duration is within acceptable range"
         return 0
@@ -832,68 +832,68 @@ run_single_experiment() {
     local tr_num=$1
     local exp_num=$2
     local retry_count=${3:-0}
-    
+
     local exp_dir="${BASE_EXP_DIR}/tr${tr_num}/exp${exp_num}"
     local conditions_file="${exp_dir}/conditions.csv"
     local run_scenario_sh="${exp_dir}/run_scenario.sh"
     local metrics_log_file="${exp_dir}/metrics_output_tr${tr_num}_exp${exp_num}.log"
     local metrics_csv="${exp_dir}/metrics/kpm_style5_metrics.csv"
-    
+
     info "Starting experiment tr${tr_num}/exp${exp_num} (attempt $((retry_count + 1)))"
     save_experiment_state "$tr_num" "$exp_num" "starting" "$retry_count"
-    
+
     # Validate required files exist
     if [[ ! -f "$conditions_file" ]]; then
         error "Conditions file not found: $conditions_file"
         return 1
     fi
-    
+
     if [[ ! -f "$run_scenario_sh" ]]; then
         error "Scenario script not found: $run_scenario_sh"
         return 1
     fi
-    
+
     # Skip if already completed successfully
     # if validate_experiment_completion "$exp_dir" "$tr_num" "$exp_num"; then
         # success "Experiment tr${tr_num}/exp${exp_num} already completed successfully"
         # return 0
     # fi
-    
+
     # Create necessary directories
     mkdir -p "${exp_dir}/gnb_logs" "${exp_dir}/ue_logs" "${exp_dir}/metrics"
-    
+
     # Step 1: Start Near-RT RIC
     step "[1/6] Starting Near-RT RIC"
     save_experiment_state "$tr_num" "$exp_num" "ric_starting" "$retry_count"
-    
-    cd ~/openran/oran-sc-ric
+
+    cd oran-sc-ric
     if ! retry_with_backoff 3 10 "RIC startup" \
          sudo env METRICS_PATH="${exp_dir}/metrics" docker compose up -d; then
         error "Failed to start Near-RT RIC"
         return 1
     fi
-    
+
     if ! check_docker_service_health "ric_submgr"; then
         error "Near-RT RIC failed to become ready"
         return 1
     fi
-    
+
     # Step 2: Start Open5GS Core
     step "[2/6] Starting Open5GS Core"
     save_experiment_state "$tr_num" "$exp_num" "5gc_starting" "$retry_count"
-    
-    cd ~/openran/srsRAN_Project/docker
+
+    cd srsRAN_Project/docker
     if ! retry_with_backoff 3 10 "5GC startup" \
          sudo docker compose up -d; then
         error "Failed to start Open5GS Core"
         return 1
     fi
-    
+
     if ! check_docker_service_health "open5gs_5gc" 180; then
         error "Open5GS Core failed to become healthy"
         return 1
     fi
-    
+
     # Start iPerf servers in 5GC
     step "Starting iPerf servers in 5GC"
     for port in 5201 5202 5203; do
@@ -902,36 +902,35 @@ run_single_experiment() {
         fi
     done
     sleep 3
-    
+
     # Step 3: Start gNBs
     step "[3/6] Starting gNBs"
     save_experiment_state "$tr_num" "$exp_num" "gnb_starting" "$retry_count"
-    
-    cd ~/
+
     if ! check_and_free_zmq_ports; then
         error "Failed to prepare ZMQ ports"
         return 1
     fi
-    
+
     if ! retry_with_backoff 2 15 "gNB startup" \
          start_gnb cu_cp_01 1 10.53.1.1 55555 "${exp_dir}/gnb_logs"; then
         error "Failed to start gNB"
         return 1
     fi
-    
+
     # Wait for network bridge
     info "Waiting for Open5GS bridge interface..."
     local bridge_timeout=60
     local bridge_start=$(date +%s)
     local bridge_name=""
-    
+
     while [[ -z "$bridge_name" ]]; do
         local elapsed=$(( $(date +%s) - bridge_start ))
         if (( elapsed >= bridge_timeout )); then
             error "Timeout waiting for Open5GS bridge interface"
             return 1
         fi
-        
+
         bridge_name=$(ip -o addr show | awk '/10\.53\.1\.1/ {print $2; exit}')
         if [[ -n "$bridge_name" ]]; then
             success "Found bridge interface: $bridge_name"
@@ -939,11 +938,11 @@ run_single_experiment() {
         fi
         sleep 2
     done
-    
+
     # Step 4: Create UE namespaces and start UEs
     step "[4/6] Setting up UEs"
     save_experiment_state "$tr_num" "$exp_num" "ue_setup" "$retry_count"
-    
+
     # Create namespaces
     for i in {1..3}; do
         local ue_ns="ue$i"
@@ -958,7 +957,7 @@ run_single_experiment() {
             info "Namespace $ue_ns already exists"
         fi
     done
-    
+
     # Add routing
     if ! ip route show | grep -q "10.45.0.0/16 via 10.53.1.2"; then
         if sudo ip route add 10.45.0.0/16 via 10.53.1.2; then
@@ -967,7 +966,7 @@ run_single_experiment() {
             warn "Failed to add route - may already exist"
         fi
     fi
-    
+
     # Start UEs
     for i in {1..3}; do
         if ! retry_with_backoff 2 10 "UE$i startup" \
@@ -976,19 +975,19 @@ run_single_experiment() {
             return 1
         fi
     done
-    
+
     # Step 5: Start GNU Radio scenario
     step "[5/6] Starting GNU Radio scenario"
     save_experiment_state "$tr_num" "$exp_num" "gnuradio_starting" "$retry_count"
-    
+
     info "Launching GNU Radio scenario: $run_scenario_sh"
     if ! bash "$run_scenario_sh"; then
         error "Failed to start GNU Radio scenario"
         return 1
     fi
-    
+
     sleep 5
-    
+
     # Get GNU Radio PID
     if [[ -f /tmp/python_scenario.pid ]]; then
         GNURADIO_PID=$(cat /tmp/python_scenario.pid)
@@ -1002,9 +1001,9 @@ run_single_experiment() {
         error "GNU Radio PID file not found"
         return 1
     fi
-    
+
     sleep 5
-    
+
     # Wait for UE connections
     step "Waiting for UE connections"
     for i in {1..3}; do
@@ -1013,7 +1012,7 @@ run_single_experiment() {
             return 1
         fi
     done
-    
+
     # Configure UE routes
     sleep 5
     for i in {1..3}; do
@@ -1028,22 +1027,22 @@ run_single_experiment() {
             warn "Interface tun_srsue not found in $ue_ns"
         fi
     done
-    
+
     # Step 6: Start metrics collection and traffic
     step "[6/6] Running experiment"
     save_experiment_state "$tr_num" "$exp_num" "experiment_running" "$retry_count"
-    
-    cd ~/openran/oran-sc-ric
-    
+
+    cd oran-sc-ric
+
     # Clean up previous metrics files
     rm -f "$metrics_log_file"
     sudo rm -f "$metrics_csv"
-    
+
     # Start metrics collection
     # info "Starting KPM metrics collection"
     # docker compose exec python_xapp_runner ./malicious-detector.py --model_path artifacts_stage1_binary_XGBoost_study.pkl > "$metrics_log_file" 2>&1 &
     # local metrics_pid=$!
-    
+
     # Check for 503 errors in metrics
     # sleep 15
     # if ! check_metrics_503_error "$metrics_log_file"; then
@@ -1051,9 +1050,9 @@ run_single_experiment() {
     #     kill "$metrics_pid" 2>/dev/null || true
     #     return 1
     # fi
-    
+
     success "Metrics collection is healthy"
-    
+
     # Start traffic generation
     info "Starting traffic generation"
     if ! start_and_wait_for_iperf "$conditions_file" 3 "$exp_dir"; then
@@ -1061,7 +1060,7 @@ run_single_experiment() {
         kill "$metrics_pid" 2>/dev/null || true
         return 1
     fi
-    
+
     Wait for metrics process to complete
     info "Waiting for metrics collection to complete"
     wait "$metrics_pid" 2>/dev/null || true
@@ -1104,24 +1103,24 @@ main_experiment_loop() {
             CURRENT_EXP=${exp_num}
             local retry_key="tr${tr_num}_exp${exp_num}"
             local current_retry=${RETRY_COUNTS[$retry_key]:-0}
-            
+
             ((current_retry++)) || true
             print_main_progress_bar $CURRENT_RUN $TOTAL_RUNS
-            
+
             local experiment_success=false
-            
+
             # Retry loop for individual experiment
             while (( current_retry <= MAX_RETRIES )); do
                 info "\n=== Starting Training Set: $tr_num, Experiment: $exp_num ==="
                 info "Run: $CURRENT_RUN of $TOTAL_RUNS (Attempt: $((current_retry + 1)))"
-                
+
                 if run_single_experiment "$tr_num" "$exp_num" "$current_retry"; then
                     experiment_success=true
                     break
                 else
                     ((current_retry++))
                     RETRY_COUNTS[$retry_key]=$current_retry
-                    
+
                     if (( current_retry <= MAX_RETRIES )); then
                         retry_info "Experiment failed, retrying in ${RETRY_DELAY}s (attempt $((current_retry + 1))/$((MAX_RETRIES + 1)))"
                         cleanup
@@ -1132,7 +1131,7 @@ main_experiment_loop() {
                     fi
                 fi
             done
-            
+
             if [[ "$experiment_success" == "true" ]]; then
                 success "✅ Experiment tr${tr_num}/exp${exp_num} completed successfully"
                 (( CURRENT_RUN++ ))
@@ -1142,16 +1141,16 @@ main_experiment_loop() {
                 # Optionally continue with next experiment or exit
                 # For now, we'll continue
             fi
-            
+
             # Clean up after each experiment
             cleanup
-            
+
             # Pause between experiments
             if (( current_retry == 0 )); then  # Only pause if no retries were needed
                 info "Pausing 10s before next experiment..."
                 sleep 10
             fi
-            
+
             # Check if only running specific experiment
             if [[ -n "$ONLY_EXP" ]]; then
                 success "✅ Completed requested experiment tr:$tr_num / exp:$ONLY_EXP"
@@ -1165,7 +1164,7 @@ main_experiment_loop() {
 info "🚀 Enhanced Robust Network Experiment Script Starting"
 info "Configuration:"
 info "  - Training Sets: $START_TR to $((TOTAL_TRAINING_SETS - 1))"
-info "  - Experiments per set: $START_EXP to $TOTAL_EXPERIMENTS" 
+info "  - Experiments per set: $START_EXP to $TOTAL_EXPERIMENTS"
 info "  - Max retries per experiment: $MAX_RETRIES"
 info "  - Retry delay: ${RETRY_DELAY}s"
 info "  - Total runs: $TOTAL_RUNS"
