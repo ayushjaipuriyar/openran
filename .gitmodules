@@ -1,6 +1,6 @@
 [submodule "oran-sc-ric"]
         path = oran-sc-ric
-        url = https://github.com/srsran/oran-sc-ric.git
+        url = https://github.com/ayushjaipuriyar/oran-sc-ric.git
 [submodule "srsRAN_Project"]
         path = srsRAN_Project
         url = https://github.com/ayushjaipuriyar/srsRAN_Project.git

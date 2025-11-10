@@ -4,23 +4,23 @@ import random
 from pathlib import Path
 from argparse import ArgumentParser
 from mmap_generator import MMapGenerator, generate_channel_parameters
+from config import (
+    UE_COUNT,
+    EXPERIMENTS_PER_TR,
+    TRAFFIC_PROFILE_DIR,
+    SCENARIO_SCRIPT,
+    DURATION_SEC,
+)
 
 # === Configuration ===
-UE_COUNT = 3
-EXPERIMENTS_PER_TR = 1
 TOTAL_TRAINING_RUNS = 50
-TRAFFIC_PROFILE_DIR = Path("traffic_profiles")
 OUTPUT_DIR = Path("generated_experiments")
-SCENARIO_SCRIPT = "/home/g3043047j/dataset/multi_ue_scenario_nogui.py"
-DURATION_SEC = 480  # 8 minutes
 
 
 def list_available_profiles():
     """Returns list of all available UE traffic profiles"""
-    return sorted([
-        f for f in TRAFFIC_PROFILE_DIR.glob("**/*.sh")
-        if "malicious" not in f.parts
-    ])
+    benign_dir = TRAFFIC_PROFILE_DIR / "benign"
+    return sorted(list(benign_dir.glob("**/*.sh"))) if benign_dir.exists() else []
 
 def assign_profiles(generator, available_profiles):
     """Randomly assign a traffic profile to each UE using M-map"""
@@ -54,7 +54,7 @@ def create_exp_folder(tr_id, exp_id, g, channel_params, profile_assignments):
     with open(cond_path, "w") as f:
         f.write("UE,Profile\n")
         for ue, profile_path in profile_assignments.items():
-            f.write(f"{ue},{str(profile_path.resolve())}\n")
+            f.write(f"{ue},{str(profile_path)}\n")
         f.write("\n# M-map Parameters\n")
         f.write(f"seed,{g.seed}\n")
         f.write(f"p,{g.p}\n")
@@ -63,8 +63,6 @@ def create_exp_folder(tr_id, exp_id, g, channel_params, profile_assignments):
             f.write(f"{k},{v}\n")
 
     print(f"  ✅ Created: {exp_path.relative_to(OUTPUT_DIR)}")
-
-
 
 
 def main():
@@ -85,14 +83,14 @@ def main():
     for tr in range(TOTAL_TRAINING_RUNS):
         # Determine the seed for this training run.
         tr_seed = (args.seed + tr) if args.seed is not None else None
-        
+
         # Create a single generator for this entire training run.
         g = MMapGenerator(tr_seed, p=args.p)
-        
+
         # Generate all conditions for this run.
         channel_params = generate_channel_parameters(g)
         profile_assignments = assign_profiles(g, available_profiles)
-        
+
         print(f"\nTR{tr}: Generating experiments with seed={g.seed:.4f}, p={g.p:.4f}")
 
         for exp in range(1, EXPERIMENTS_PER_TR + 1):
@@ -103,4 +101,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -4,43 +4,40 @@ import random
 from pathlib import Path
 from argparse import ArgumentParser
 from mmap_generator import MMapGenerator, generate_channel_parameters
+from config import (
+    UE_COUNT,
+    EXPERIMENTS_PER_TR,
+    TRAFFIC_PROFILE_DIR,
+    SCENARIO_SCRIPT,
+    DURATION_SEC,
+)
 
 # === Configuration ===
-UE_COUNT = 3
-EXPERIMENTS_PER_TR = 1
 TOTAL_TRAINING_RUNS = 100
-TRAFFIC_PROFILE_DIR = Path("traffic_profiles")
 # Changed output directory to keep malicious data separate
 OUTPUT_DIR = Path("generated_malicious_experiments")
-SCENARIO_SCRIPT = "/home/g3043047j/dataset/multi_ue_scenario_nogui.py"
-DURATION_SEC = 480  # 8 minutes
 
 
 def list_and_categorize_profiles():
     """Separates available profiles into normal and malicious lists."""
-    all_profiles = list(TRAFFIC_PROFILE_DIR.glob("**/*.sh"))
-    normal_profiles = []
-    malicious_profiles = []
+    benign_dir = TRAFFIC_PROFILE_DIR / "benign"
+    malicious_dir = TRAFFIC_PROFILE_DIR / "malicious"
 
-    malicious_dir_name = "malicious"
-
-    for profile in all_profiles:
-        # Check if 'malicious' is in the path parts
-        if malicious_dir_name in profile.parts:
-            malicious_profiles.append(profile)
-        else:
-            normal_profiles.append(profile)
+    normal_profiles = list(benign_dir.glob("**/*.sh")) if benign_dir.exists() else []
+    malicious_profiles = (
+        list(malicious_dir.glob("**/*.sh")) if malicious_dir.exists() else []
+    )
 
     return sorted(normal_profiles), sorted(malicious_profiles)
 
 
 def assign_profiles_with_malicious(generator, normal_profiles, malicious_profiles):
-    """Assigns two UEs malicious profiles and the rest normal profiles."""
+    """Assigns one UE malicious profile and the rest normal profiles."""
     assignments = {}
 
-    # Select two unique UEs to be malicious for this training run.
+    # Select one UE to be malicious for this training run.
     malicious_ue_indices = set()
-    while len(malicious_ue_indices) < 2:
+    while len(malicious_ue_indices) < 1:
         idx = int(generator.next() * UE_COUNT) + 1
         malicious_ue_indices.add(idx)
 
@@ -83,7 +80,7 @@ def create_exp_folder(tr_id, exp_id, g, channel_params, profile_assignments):
     with open(cond_path, "w") as f:
         f.write("UE,Profile\n")
         for ue, profile_path in profile_assignments.items():
-            f.write(f"{ue},{str(profile_path.resolve())}\n")
+            f.write(f"{ue},{str(profile_path)}\n")
         f.write("\n# M-map Parameters\n")
         f.write(f"seed,{g.seed}\n")
         f.write(f"p,{g.p}\n")
@@ -115,11 +112,11 @@ def main():
     normal_profiles, malicious_profiles = list_and_categorize_profiles()
 
     if not normal_profiles:
-        print(f"Error: No normal MGEipN profiles found in {TRAFFIC_PROFILE_DIR}")
+        print(f"Error: No normal Iperf profiles found in {TRAFFIC_PROFILE_DIR}")
         return
     if not malicious_profiles:
         print(
-            f"Error: No malicious Iperf4 profiles found in a '{TRAFFIC_PROFILE_DIR}/malicious' subdirectory."
+            f"Error: No malicious Iperf profiles found in a '{TRAFFIC_PROFILE_DIR}/malicious' subdirectory."
         )
         return
 
