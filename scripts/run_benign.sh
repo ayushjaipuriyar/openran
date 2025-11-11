@@ -18,6 +18,9 @@ source "$RUN_CFG"
 # Set experiment directory for benign experiments
 export BASE_EXP_DIR="$BENIGN_OUTPUT_DIR"
 
+# Project root (absolute) for path-safe operations
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 # Enhanced configuration with retry settings
 
 
@@ -861,9 +864,8 @@ run_single_experiment() {
     step "[1/6] Starting Near-RT RIC"
     save_experiment_state "$tr_num" "$exp_num" "ric_starting" "$retry_count"
 
-    cd oran-sc-ric
     if ! retry_with_backoff 3 10 "RIC startup" \
-         sudo env METRICS_PATH="${exp_dir}/metrics" docker compose up -d; then
+        bash -c "cd \"$PROJECT_ROOT/oran-sc-ric\" && sudo env METRICS_PATH='${exp_dir}/metrics' docker compose up -d"; then
         error "Failed to start Near-RT RIC"
         return 1
     fi
@@ -877,9 +879,8 @@ run_single_experiment() {
     step "[2/6] Starting Open5GS Core"
     save_experiment_state "$tr_num" "$exp_num" "5gc_starting" "$retry_count"
 
-    cd srsRAN_Project/docker
     if ! retry_with_backoff 3 10 "5GC startup" \
-         sudo docker compose up -d; then
+        bash -c "cd \"$PROJECT_ROOT/srsRAN_Project/docker\" && sudo docker compose up -d"; then
         error "Failed to start Open5GS Core"
         return 1
     fi
@@ -902,7 +903,6 @@ run_single_experiment() {
     step "[3/6] Starting gNBs"
     save_experiment_state "$tr_num" "$exp_num" "gnb_starting" "$retry_count"
 
-    cd ..
     if ! check_and_free_zmq_ports; then
         error "Failed to prepare ZMQ ports"
         return 1
@@ -1028,9 +1028,7 @@ run_single_experiment() {
     step "[6/6] Running experiment"
     save_experiment_state "$tr_num" "$exp_num" "experiment_running" "$retry_count"
 
-    cd oran-sc-ric
-
-    # Clean up previous metrics files
+    # Clean up previous metrics files (no global cd so use absolute paths)
     rm -f "$metrics_log_file"
     sudo rm -f "$metrics_csv"
 
