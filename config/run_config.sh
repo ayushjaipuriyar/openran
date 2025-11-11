@@ -28,7 +28,7 @@ export HEALTH_CHECK_INTERVAL=5
 export METRICS_503_CHECK_TIMEOUT=10
 
 export EXPERIMENT_STATE_FILE="/tmp/experiment_state.json"
-
+export LOG_DIR="$PROJECT_ROOT/logs"
 # Output directories
 export BENIGN_OUTPUT_DIR="$PROJECT_ROOT/generated_experiments"
 export MALICIOUS_OUTPUT_DIR="$PROJECT_ROOT/generated_malicious_experiments"
