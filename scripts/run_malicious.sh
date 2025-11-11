@@ -6,7 +6,14 @@ START_EXP=${2:-1}
 ONLY_EXP=${3:-}
 
 # Import configuration from Python config file
-source <(python3 ../config/export_config.sh)
+# Resolve script directory so this works regardless of the current working directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUN_CFG="$SCRIPT_DIR/../config/run_config.sh"
+if [[ ! -f "$RUN_CFG" ]]; then
+    echo "Error: run config not found: $RUN_CFG" >&2
+    exit 1
+fi
+source "$RUN_CFG"
 
 # Set experiment directory for malicious experiments
 export BASE_EXP_DIR="$MALICIOUS_OUTPUT_DIR"

@@ -7,7 +7,8 @@ import sys
 
 sys.path.append("..")
 from lib.mmap_generator import MMapGenerator, generate_channel_parameters
-from config.config import (
+# Use the focused generation config to avoid importing full runtime settings
+from config.generate_config import (
     UE_COUNT,
     EXPERIMENTS_PER_TR,
     TRAFFIC_PROFILE_DIR,

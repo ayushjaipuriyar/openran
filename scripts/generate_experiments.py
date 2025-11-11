@@ -10,7 +10,8 @@ os.chdir(Path(__file__).parent.parent)
 
 sys.path.append(".")
 from lib.mmap_generator import MMapGenerator, generate_channel_parameters
-from config.config import (
+# Use the small, focused generation config to avoid pulling unrelated runtime settings
+from config.generate_config import (
     UE_COUNT,
     EXPERIMENTS_PER_TR,
     TRAFFIC_PROFILE_DIR,
