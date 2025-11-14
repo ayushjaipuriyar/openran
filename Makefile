@@ -7,12 +7,12 @@ help:
 	@echo "Available targets:"
 	@echo "  setup       - Install Python dependencies"
 	@echo "  dataset     - Show dataset folder contents and info"
-	@echo "  benign      - Generate and run benign experiments"
+	@echo "  benign      - Generate and run benign experiments (requires sudo)"
 	@echo "  benign-generate [SEED=] [P=] - Generate benign experiments with optional seed and p parameters"
-	@echo "  benign-run [START_TR=] [START_EXP=] - Run benign experiments from specific training set/experiment"
-	@echo "  malicious   - Generate and run malicious experiments"
+	@echo "  benign-run [START_TR=] [START_EXP=] - Run benign experiments from specific training set/experiment (requires sudo)"
+	@echo "  malicious   - Generate and run malicious experiments (requires sudo)"
 	@echo "  malicious-generate [SEED=] [P=] - Generate malicious experiments with optional seed and p parameters"
-	@echo "  malicious-run [START_TR=] [START_EXP=] - Run malicious experiments from specific training set/experiment"
+	@echo "  malicious-run [START_TR=] [START_EXP=] - Run malicious experiments from specific training set/experiment (requires sudo)"
 	@echo "  clean       - Clean generated experiment directories"
 	@echo "  help        - Show this help message"
 # Generate benign experiments
@@ -21,7 +21,7 @@ benign-generate:
 
 # Run benign experiments
 benign-run:
-	./scripts/run_benign.sh $(START_TR) $(START_EXP)
+	sudo ./scripts/run_benign.sh $(START_TR) $(START_EXP)
 
 # Full benign workflow
 benign: benign-generate benign-run
@@ -32,7 +32,7 @@ malicious-generate:
 
 # Run malicious experiments
 malicious-run:
-	./scripts/run_malicious.sh $(START_TR) $(START_EXP)
+	sudo ./scripts/run_malicious.sh $(START_TR) $(START_EXP)
 
 # Full malicious workflow
 malicious: malicious-generate malicious-run

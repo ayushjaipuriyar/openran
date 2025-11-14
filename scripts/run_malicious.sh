@@ -15,6 +15,9 @@ if [[ ! -f "$RUN_CFG" ]]; then
 fi
 source "$RUN_CFG"
 
+# Ensure tmp directory exists for experiment state
+mkdir -p "$(dirname "$EXPERIMENT_STATE_FILE")"
+
 # Set experiment directory for malicious experiments
 export BASE_EXP_DIR="$MALICIOUS_OUTPUT_DIR"
 
@@ -250,6 +253,16 @@ cleanup() {
     fi
     tmux kill-server 2>/dev/null || true
 
+    # Kill direct gNB processes
+    if [[ -f /tmp/gnb_cu_cp_01.pid ]]; then
+        local gnb_pid=$(cat /tmp/gnb_cu_cp_01.pid)
+        if kill -0 "$gnb_pid" 2>/dev/null; then
+            info "Stopping direct gNB process (PID: $gnb_pid)"
+            sudo kill "$gnb_pid" 2>/dev/null || true
+        fi
+        rm -f /tmp/gnb_cu_cp_01.pid
+    fi
+
     # Enhanced Docker cleanup with parallel execution and timeouts
     info "Stopping Docker services..."
     (
@@ -386,12 +399,37 @@ wait_for_gnb_connection() {
             if [[ -f "$log_file" ]]; then
                 error "Last 20 lines from $log_file:"
                 tail -n 20 "$log_file" | sed 's/^/    /'
+            else
+                error "Log file $log_file was never created"
+                error "Checking gNB process status..."
+                if [[ -f /tmp/gnb_${name}.pid ]]; then
+                    local gnb_pid=$(cat /tmp/gnb_${name}.pid)
+                    if kill -0 "$gnb_pid" 2>/dev/null; then
+                        error "gNB process is running (PID: $gnb_pid) but no log file created"
+                        error "Process command: $(ps -p $gnb_pid -o cmd= 2>/dev/null || echo 'unknown')"
+                    else
+                        error "gNB process is not running"
+                    fi
+                elif tmux has-session -t "gnb_${name}" 2>/dev/null; then
+                    error "Tmux session exists. Pane content:"
+                    tmux capture-pane -t "gnb_${name}" -p 2>/dev/null | tail -n 20 | sed 's/^/    /' || error "Could not capture pane content"
+                else
+                    error "No gNB process or tmux session found"
+                fi
             fi
             return 1
         fi
 
         if [[ ! -f "$log_file" ]]; then
             info "Waiting for log file to be created..."
+            # Also check if gNB process is still running
+            if [[ -f /tmp/gnb_${name}.pid ]]; then
+                local gnb_pid=$(cat /tmp/gnb_${name}.pid)
+                if ! kill -0 "$gnb_pid" 2>/dev/null; then
+                    error "gNB process died before creating log file"
+                    return 1
+                fi
+            fi
             sleep 2
             continue
         fi
@@ -495,6 +533,17 @@ start_gnb() {
         return 1
     fi
 
+    # Check if tmux session was created successfully
+    sleep 2
+    if ! tmux has-session -t "gnb_${name}" 2>/dev/null; then
+        error "Failed to create tmux session for gNB $name"
+        error "Tmux sessions: $(tmux list-sessions 2>/dev/null || echo 'none')"
+        return 1
+    fi
+
+    success "gNB $name tmux session created successfully"
+    sleep 3
+
     # Start metrics server with better error handling
     info "Starting metrics server on port $metrics_port"
     python3 lib/metrics_server.py \
@@ -518,74 +567,16 @@ start_gnb() {
 
     success "Metrics server ready on port $metrics_port"
 
-    # Check bind IP availability
-    if ss -tuln | grep -q "$bind_ip"; then
-        warn "Bind IP $bind_ip is in use, attempting to free it"
-        local pids=$(sudo lsof -nP -iUDP@"$bind_ip" | awk 'NR>1 {print $2}' | sort -u)
-        for pid in $pids; do
-            if [[ -n "$pid" ]]; then
-                info "Killing process with PID $pid using $bind_ip"
-                sudo kill "$pid" 2>/dev/null || true
-            fi
-        done
-        sleep 2
-    fi
-
-    # Kill existing tmux session
-    if tmux has-session -t "gnb_${name}" 2>/dev/null; then
-        warn "Existing gNB session found, terminating it"
+    # Check if gNB process is running in the tmux session
+    local gnb_pid=$(tmux list-panes -t "gnb_${name}" -F "#{pane_pid}" 2>/dev/null | head -1)
+    if [[ -z "$gnb_pid" ]] || ! kill -0 "$gnb_pid" 2>/dev/null; then
+        error "gNB process not found in tmux session"
+        tmux capture-pane -t "gnb_${name}" -p 2>/dev/null || true
         tmux kill-session -t "gnb_${name}" 2>/dev/null || true
-        sleep 2
+        return 1
     fi
 
-    # Start gNB in tmux session
-    tmux new-session -d -s "gnb_${name}" "sudo gnb -c $GNB_CONF \
-        --ran_node_name $name \
-        --gnb_id 411 \
-        --gnb_cu_up_id 0 \
-        --gnb_du_id 0 \
-        cu_cp \
-        amf \
-        --bind_addr $bind_ip \
-        ru_sdr \
-        --device_args tx_port=tcp://127.0.0.1:${tx_port},rx_port=tcp://127.0.0.1:${rx_port},base_srate=11.52e6 \
-        log \
-        --filename ${log_dir}/${name}.log \
-        --tracing_filename ${log_dir}/${name}_tracing.log \
-        --e1ap_json_enabled true \
-        --f1ap_json_enabled true \
-        --high_latency_diagnostics_enabled true \
-        --broadcast_enabled true \
-        --radio_level warning \
-        --hex_max_size 1024 \
-        pcap \
-        --mac_enable true \
-        --mac_filename ${log_dir}/${name}_mac.pcap \
-        --mac_type udp \
-        --ngap_enable true \
-        --ngap_filename ${log_dir}/${name}_ngap.pcap \
-        --e2ap_enable true \
-        --e2ap_du_filename ${log_dir}/${name}_du_e2ap.pcap \
-        --e2ap_cu_cp_filename ${log_dir}/${name}_cu_cp_e2ap.pcap \
-        --e2ap_cu_up_filename ${log_dir}/${name}_cu_up_e2ap.pcap \
-        --rlc_enable true \
-        --rlc_filename ${log_dir}/${name}_rlc.pcap \
-        --rlc_rb_type all \
-        --e1ap_enable true \
-        --e1ap_filename ${log_dir}/${name}_e1ap.pcap \
-        --f1ap_enable true \
-        --f1ap_filename ${log_dir}/${name}_f1ap.pcap \
-        --f1u_enable true \
-        --f1u_filename ${log_dir}/${name}_f1u.pcap \
-        --n3_enable true \
-        --n3_filename ${log_dir}/${name}_n3.pcap \
-        metrics \
-        --addr ${METRICS_IP} \
-        --port ${metrics_port} \
-        < /dev/null > ${log_dir}/${name}_stdout.log 2>&1"
-
-    success "gNB $name started successfully"
-    sleep 5
+    success "gNB $name process running (PID: $gnb_pid)"
 
     # Wait for gNB connections with retry
     if ! wait_for_gnb_connection "$name" "$log_dir" 180; then
